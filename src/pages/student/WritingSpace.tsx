@@ -76,14 +76,14 @@ export default function WritingSpace() {
             </div>
           </div>
           
-          <div className="flex-1 p-6 relative group bg-[#fbfbfb]">
-            <div className="absolute inset-6 text-lg md:text-xl text-transparent pointer-events-none whitespace-pre-wrap font-sans leading-loose md:leading-loose">
+          <div className="flex-1 relative group bg-[#fbfbfb]">
+            <div className="absolute inset-4 md:inset-6 text-lg md:text-xl text-transparent pointer-events-none whitespace-pre-wrap break-words font-sans leading-loose md:leading-loose overflow-hidden">
               {renderTextWithHighlights()}
             </div>
             <textarea 
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              className="w-full h-full resize-none outline-none text-lg md:text-xl text-neutral-700 font-medium font-sans leading-loose md:leading-loose bg-transparent absolute inset-6 p-0"
+              className="resize-none outline-none text-lg md:text-xl text-neutral-700 font-medium font-sans leading-loose md:leading-loose bg-transparent absolute inset-4 md:inset-6 p-0 whitespace-pre-wrap break-words overflow-y-auto"
               placeholder="Start your story here..."
             />
           </div>
