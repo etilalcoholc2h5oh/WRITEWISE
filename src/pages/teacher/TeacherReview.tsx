@@ -1,26 +1,85 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { mockSubmissions, mockAssignments } from '../../data/mockData';
-import { ArrowLeft, User, Sparkles, Activity, CheckSquare, Save } from 'lucide-react';
+import { ArrowLeft, User as UserIcon, Sparkles, Activity, CheckSquare, Save } from 'lucide-react';
+import { db } from '../../lib/firebase';
+import { collection, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { User, Assignment, Submission } from '../../types';
+
 import aiImg from '../../assets/images/chibi_ai_1786859929949.jpg';
 
-export default function TeacherReview() {
+export default function TeacherReview({ user }: { user: User }) {
   const { submissionId } = useParams();
   const navigate = useNavigate();
   
-  const submission = mockSubmissions.find(s => s.id === submissionId);
-  const assignment = mockAssignments.find(a => a.id === submission?.assignmentId);
-
-  const [finalScore, setFinalScore] = useState<number>(submission?.aiAnalysis?.suggestedScore || 0);
+  const [submission, setSubmission] = useState<Submission | null>(null);
+  const [assignment, setAssignment] = useState<Assignment | null>(null);
+  const [student, setStudent] = useState<User | null>(null);
+  
+  const [finalScore, setFinalScore] = useState<number>(0);
   const [feedback, setFeedback] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  if (!submission || !assignment) return <div>Submission not found</div>;
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        if (!submissionId) return;
+        
+        // Fetch submission
+        const subRef = doc(db, 'submissions', submissionId);
+        const subSnap = await getDoc(subRef);
+        if (!subSnap.exists()) return;
+        const subData = { id: subSnap.id, ...subSnap.data() } as Submission;
+        setSubmission(subData);
+        setFinalScore(subData.teacherFeedback?.score || subData.aiAnalysis?.suggestedScore || 0);
+        setFeedback(subData.teacherFeedback?.feedback || '');
+
+        // Fetch assignment
+        const assignRef = doc(db, 'assignments', subData.assignmentId);
+        const assignSnap = await getDoc(assignRef);
+        if (assignSnap.exists()) {
+          setAssignment({ id: assignSnap.id, ...assignSnap.data() } as Assignment);
+        }
+
+        // Fetch student
+        const studentRef = doc(db, 'users', subData.studentId);
+        const studentSnap = await getDoc(studentRef);
+        if (studentSnap.exists()) {
+          setStudent({ id: studentSnap.id, ...studentSnap.data() } as User);
+        }
+
+      } catch (error) {
+        console.error("Error fetching review data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, [submissionId]);
+
+
+  if (loading) return <div className="text-center p-12">Loading...</div>;
+  if (!submission || !assignment) return <div className="text-center p-12">Submission not found</div>;
 
   const { aiLog, aiAnalysis } = submission;
 
-  const saveReview = () => {
-    alert('Review saved! Final score and feedback sent to student.');
-    navigate('/');
+  const saveReview = async () => {
+    if (!submission) return;
+    
+    try {
+      await updateDoc(doc(db, 'submissions', submission.id), {
+        status: 'graded',
+        teacherFeedback: {
+          score: finalScore,
+          feedback: feedback,
+          gradedAt: new Date().toISOString()
+        }
+      });
+      alert('Review saved! Final score and feedback sent to student.');
+      navigate('/');
+    } catch (error) {
+      console.error("Error saving review:", error);
+      alert("Failed to save review.");
+    }
   };
 
   return (
@@ -42,10 +101,10 @@ export default function TeacherReview() {
         <div className="flex-1 flex flex-col gap-4 min-h-[400px] lg:min-h-0">
           <div className="bg-white p-4 md:p-5 rounded-[2rem] border-2 border-neutral-100 shadow-sm flex items-center gap-4">
             <div className="w-14 h-14 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full flex items-center justify-center text-indigo-500 border-2 border-indigo-200 shadow-inner">
-              <User size={24} />
+              <UserIcon size={24} />
             </div>
             <div>
-              <h2 className="font-black text-neutral-800 text-xl">Budi Santoso</h2>
+              <h2 className="font-black text-neutral-800 text-xl">{student?.name || 'Unknown Student'}</h2>
               <p className="text-xs md:text-sm font-medium text-neutral-500">{assignment.title} • {new Date(submission.submittedAt || '').toLocaleDateString()}</p>
             </div>
           </div>
@@ -93,36 +152,38 @@ export default function TeacherReview() {
             </div>
           </div>
 
-          <div className="bg-white p-5 md:p-6 rounded-[2rem] border-2 border-blue-100 shadow-sm flex-1">
-            <div className="flex items-center gap-2 font-black text-blue-700 mb-2 text-lg">
-              <Activity size={20} />
-              Process Log
+          {aiLog && (
+            <div className="bg-white p-5 md:p-6 rounded-[2rem] border-2 border-blue-100 shadow-sm flex-1">
+              <div className="flex items-center gap-2 font-black text-blue-700 mb-2 text-lg">
+                <Activity size={20} />
+                Process Log
+              </div>
+              <p className="text-xs font-medium text-neutral-400 mb-5">How the student wrote this piece.</p>
+              
+              <div className="space-y-2">
+                <div className="flex justify-between items-center p-3 bg-neutral-50 rounded-xl">
+                  <span className="text-xs font-bold text-neutral-600">Errors Detected</span>
+                  <span className="font-black text-neutral-800 text-lg">{aiLog.errorsDetected}</span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-amber-50 rounded-xl">
+                  <span className="text-xs font-bold text-amber-700">Hints Used</span>
+                  <span className="font-black text-amber-600 text-lg">{aiLog.hintsUsed}</span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-blue-50 rounded-xl">
+                  <span className="text-xs font-bold text-blue-700">Explains Opened</span>
+                  <span className="font-black text-blue-600 text-lg">{aiLog.explainsOpened}</span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-emerald-50 rounded-xl">
+                  <span className="text-xs font-bold text-emerald-700">Fixes Applied</span>
+                  <span className="font-black text-emerald-600 text-lg">{aiLog.correctionsApplied}</span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-neutral-50 rounded-xl mt-4">
+                  <span className="text-xs font-bold text-neutral-600">Total Revisions</span>
+                  <span className="font-black text-neutral-800 text-lg">{aiLog.revisionCount}</span>
+                </div>
+              </div>
             </div>
-            <p className="text-xs font-medium text-neutral-400 mb-5">How Budi wrote this piece.</p>
-            
-            <div className="space-y-2">
-              <div className="flex justify-between items-center p-3 bg-neutral-50 rounded-xl">
-                <span className="text-xs font-bold text-neutral-600">Errors Detected</span>
-                <span className="font-black text-neutral-800 text-lg">{aiLog.errorsDetected}</span>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-amber-50 rounded-xl">
-                <span className="text-xs font-bold text-amber-700">Hints Used</span>
-                <span className="font-black text-amber-600 text-lg">{aiLog.hintsUsed}</span>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-blue-50 rounded-xl">
-                <span className="text-xs font-bold text-blue-700">Explains Opened</span>
-                <span className="font-black text-blue-600 text-lg">{aiLog.explainsOpened}</span>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-emerald-50 rounded-xl">
-                <span className="text-xs font-bold text-emerald-700">Fixes Applied</span>
-                <span className="font-black text-emerald-600 text-lg">{aiLog.correctionsApplied}</span>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-neutral-50 rounded-xl mt-4">
-                <span className="text-xs font-bold text-neutral-600">Total Revisions</span>
-                <span className="font-black text-neutral-800 text-lg">{aiLog.revisionCount}</span>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Column 3: Rubric & Teacher Feedback */}
@@ -146,7 +207,7 @@ export default function TeacherReview() {
                       <span className="text-[10px] font-bold text-purple-400 uppercase">AI: {score}</span>
                       <input 
                         type="number" 
-                        defaultValue={score}
+                        defaultValue={score as number}
                         className="w-16 p-2 bg-white border-2 border-neutral-200 rounded-xl text-center text-sm font-black text-neutral-800 focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-50 transition-all"
                         min={0}
                         max={20}
@@ -162,7 +223,7 @@ export default function TeacherReview() {
               <textarea 
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
-                placeholder="Give Budi some awesome feedback here! 🚀"
+                placeholder="Give awesome feedback here! 🚀"
                 className="w-full h-32 p-4 bg-neutral-50 border-2 border-neutral-100 rounded-2xl text-sm font-medium focus:outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-50 resize-none transition-all"
               />
             </div>

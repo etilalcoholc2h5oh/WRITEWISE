@@ -21,14 +21,17 @@ export interface Submission {
   id: string;
   assignmentId: string;
   studentId: string;
+  teacherId: string;
   content: string;
   status: 'draft' | 'submitted' | 'graded';
   submittedAt?: string;
   aiLog: AssistanceLog;
   aiAnalysis?: AIAnalysis;
-  teacherFeedback?: string;
-  finalScore?: number;
-  rubricScores?: Record<string, number>;
+  teacherFeedback?: {
+    score: number;
+    feedback: string;
+    gradedAt: string;
+  };
 }
 
 export interface AssistanceLog {
